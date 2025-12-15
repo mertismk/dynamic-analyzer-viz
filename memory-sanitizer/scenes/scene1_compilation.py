@@ -51,6 +51,10 @@ class CompilationWithInstrumentation(Scene):
         ).arrange(DOWN, buff=0.15)
         compiler_text.move_to(compiler)
 
+        flag_highlight = SurroundingRectangle(
+            compiler_text[2], color=YELLOW, fill_opacity=0.2, buff=0.1, stroke_width=0
+        )
+
         arrow_to_compiler = Arrow(
             source_box.get_bottom(),
             compiler.get_left(),
@@ -58,19 +62,19 @@ class CompilationWithInstrumentation(Scene):
             color=YELLOW,
             stroke_width=4,
         )
-
-        # Показываем объяснение флага перед компилятором
-        flag_explanation = Text(
-            "Флаг: включить инструментацию памяти", font_size=20, color=YELLOW
-        )
-        flag_explanation.move_to(info_pos)
-
-        self.play(Write(flag_explanation))
-        self.wait(1.5)
-        self.play(FadeOut(flag_explanation))
-
         self.play(GrowArrow(arrow_to_compiler), Create(compiler), Write(compiler_text))
-        self.wait(1)
+        self.wait(0.5)
+
+        flag_explanation = Text(
+            "Флаг -fsanitize=memory: включить\nинструментацию памяти",
+            font_size=20,
+            color=YELLOW,
+        )
+        flag_explanation.next_to(compiler, UP)
+
+        self.play(FadeIn(flag_highlight), Write(flag_explanation))
+        self.wait(1.8)
+        self.play(FadeOut(flag_explanation), FadeOut(flag_highlight))
 
         # Инструментированный код
         inst_lines = VGroup(

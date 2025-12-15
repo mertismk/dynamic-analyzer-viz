@@ -31,12 +31,16 @@ class HeapShadowAnimation(Scene):
         code_label = Text("Код", font_size=18).next_to(code_box, UP)
         code_grp = VGroup(code_box, code_lines, code_label)
 
-        heap_box = Rectangle(width=2.2, height=3.5, color=BLUE, fill_opacity=0.05)
-        heap_label = Text("Куча (Heap)", font_size=18, color=BLUE).next_to(heap_box, UP)
+        heap_box = Rectangle(width=2.6, height=3.7, color=BLUE, fill_opacity=0.05)
+        heap_label = Text("Куча (Heap)", font_size=18, color=BLUE).next_to(
+            heap_box, UP, buff=0.15
+        )
         heap_grp = VGroup(heap_box, heap_label)
 
-        shadow_box = Rectangle(width=2.2, height=3.5, color=GREY, fill_opacity=0.05)
-        shadow_label = Text("Shadow", font_size=18, color=GREY).next_to(shadow_box, UP)
+        shadow_box = Rectangle(width=2.6, height=3.7, color=GREY, fill_opacity=0.05)
+        shadow_label = Text("Shadow", font_size=18, color=GREY).next_to(
+            shadow_box, UP, buff=0.15
+        )
         shadow_grp = VGroup(shadow_box, shadow_label)
 
         y_offset = -0.5

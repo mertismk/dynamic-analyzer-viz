@@ -31,8 +31,8 @@ class StackShadowForLocal(Scene):
         code_label = Text("Код", font_size=18).next_to(code_box, UP)
         code_grp = VGroup(code_box, code_lines, code_label)
 
-        stack_box = Rectangle(width=2.2, height=3.5, color=BLUE, fill_opacity=0.05)
-        stack_label = Text("Стек", font_size=18, color=BLUE).next_to(stack_box, UP)
+        stack_box = Rectangle(width=2.6, height=3.7, color=BLUE, fill_opacity=0.05)
+        stack_label = Text("Стек", font_size=18, color=BLUE).next_to(stack_box, UP, buff=0.15)
         stack_grp = VGroup(stack_box, stack_label)
 
         shadow_box = Rectangle(width=2.2, height=3.5, color=GREY, fill_opacity=0.05)
