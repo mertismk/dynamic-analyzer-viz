@@ -1,214 +1,258 @@
 from manim import *
+from pygments.styles.monokai import MonokaiStyle
+from pygments.token import Name
 
 
-class ShadowMemoryMapping(Scene):
+class MSanStyle(MonokaiStyle):
+    styles = MonokaiStyle.styles.copy()
+    styles[Name.Function] = "#a6e22e"
+
+
+class ShadowMemoryAnimation(Scene):
     def construct(self):
-        title = Text("MSan: Теневая память (Shadow Memory)", font_size=36)
+        title = Text("MSan: Работа с теневой памятью", font_size=36, color=BLUE_B)
         title.to_edge(UP, buff=0.3)
         self.play(Write(title))
+        self.wait(0.5)
 
-        intro_text = VGroup(
-            Text(
-                "Проблема: как отследить, инициализирован ли каждый байт?",
-                font_size=22,
-                color=YELLOW,
-            ),
-            Text(
-                "Решение: для каждого байта памяти создаём", font_size=20, color=WHITE
-            ),
-            Text(
-                "специальный байт-метку в «теневой памяти»", font_size=20, color=WHITE
-            ),
-        ).arrange(DOWN, buff=0.2)
-        intro_text.move_to(ORIGIN)
+        code_str = """int main() {
+    __msan_init();
 
-        self.play(Write(intro_text))
-        self.wait(3)
-        self.play(FadeOut(intro_text))
+    int* ptr = new int[10];
+    __msan_poison(ptr, 40);
 
-        demo_label = Text(
-            "Концепция: 1 байт памяти = 1 байт метаданных", font_size=20, color=YELLOW
-        )
-        demo_label.next_to(title, DOWN, buff=0.3)
-        self.play(Write(demo_label))
+    ptr[5] = 0;
+    __msan_unpoison(&ptr[5], 4);
 
-        mem_byte = Square(side_length=1, color=BLUE, fill_opacity=0.2)
-        mem_byte_label = Text("Байт памяти", font_size=16, color=BLUE).next_to(
-            mem_byte, UP
-        )
-        mem_byte_val = Text("?", font_size=24, color=WHITE).move_to(mem_byte)
-        mem_grp = VGroup(mem_byte, mem_byte_label, mem_byte_val)
-        mem_grp.shift(LEFT * 2.5)
+    __msan_check(&ptr[0], 4);
+    if (ptr[0]) { }
 
-        arrow_demo = Arrow(ORIGIN, ORIGIN, color=YELLOW)
+    delete[] ptr;
+}"""
 
-        shadow_byte = Square(side_length=1, color=GREY, fill_opacity=0.2)
-        shadow_byte_label = Text("Shadow байт", font_size=16, color=GREY).next_to(
-            shadow_byte, UP
-        )
-        shadow_byte_val = Text("1", font_size=24, color=RED).move_to(shadow_byte)
-        shadow_grp = VGroup(shadow_byte, shadow_byte_label, shadow_byte_val)
-        shadow_grp.shift(RIGHT * 2.5)
-
-        demo_group = VGroup(mem_grp, shadow_grp).move_to(ORIGIN)
-        arrow_demo = Arrow(
-            mem_byte.get_right(), shadow_byte.get_left(), color=YELLOW, buff=0.2
+        code = Code(
+            code_string=code_str,
+            language="cpp",
+            tab_width=4,
+            formatter_style=MSanStyle,
+            background="rectangle",
+            add_line_numbers=True,
+            background_config={
+                "stroke_width": 2,
+                "stroke_color": BLUE_C,
+                "fill_color": BLACK,
+                "fill_opacity": 0.9,
+            },
         )
 
-        arrow_label = Text("отображается в", font_size=14, color=YELLOW).next_to(
-            arrow_demo, UP, buff=0.1
-        )
+        code_label = Text("Инструментированный код", font_size=16, color=BLUE_C)
+        code_label.next_to(code, UP, buff=0.12)
 
-        self.play(FadeIn(mem_grp))
-        self.play(GrowArrow(arrow_demo), Write(arrow_label))
-        self.play(FadeIn(shadow_grp))
-        self.wait(1)
+        code_group = VGroup(code, code_label)
+        code_group.scale(0.68)
+        code_group.move_to(LEFT * 3.3 + DOWN * 0.2)
 
-        # Объяснение значений
-        explanation = Text(
-            "1 = не инициализирован, 0 = инициализирован", font_size=18, color=WHITE
+        self.play(Create(code), Write(code_label))
+        self.wait(0.5)
+
+        legend = VGroup(
+            Text("✓ 0 = инициализировано", font_size=13, color=GREEN),
+            Text("✗ 1 = не инициализировано", font_size=13, color=RED),
+        ).arrange(DOWN, aligned_edge=LEFT, buff=0.15)
+        legend.to_corner(DR, buff=0.4)
+        self.play(FadeIn(legend, shift=UP * 0.2))
+        self.wait(0.3)
+
+        heap_box = RoundedRectangle(
+            corner_radius=0.1,
+            width=3.8,
+            height=2.5,
+            color=BLUE,
+            fill_opacity=0.08,
+            stroke_width=2.5,
         )
-        explanation.to_edge(DOWN, buff=1)
-        self.play(Write(explanation))
-        self.wait(2)
+        heap_label = Text(
+            "Основная память (ptr[10])", font_size=15, color=BLUE
+        ).next_to(heap_box, UP, buff=0.15)
+
+        shadow_box = RoundedRectangle(
+            corner_radius=0.1,
+            width=3.8,
+            height=2.5,
+            color=GREY,
+            fill_opacity=0.08,
+            stroke_width=2.5,
+        )
+        shadow_label = Text(
+            "Теневая память (Shadow)", font_size=15, color=GREY
+        ).next_to(shadow_box, UP, buff=0.15)
+
+        mem_blocks = VGroup(heap_box, shadow_box)
+        mem_blocks.arrange(DOWN, buff=0.5)
+        mem_blocks.move_to(RIGHT * 3.2 + DOWN * 0.1)
+
+        heap_label.next_to(heap_box, UP, buff=0.15)
+        shadow_label.next_to(shadow_box, UP, buff=0.15)
 
         self.play(
-            *[
-                FadeOut(mob)
-                for mob in [
-                    mem_grp,
-                    shadow_grp,
-                    arrow_demo,
-                    arrow_label,
-                    demo_label,
-                    explanation,
-                ]
-            ]
+            Create(VGroup(heap_box, heap_label, shadow_box, shadow_label)), run_time=1
         )
 
-        main_label = Text("Принцип 1-к-1 отображения", font_size=20, color=YELLOW)
-        main_label.next_to(title, DOWN, buff=0.3)
-        self.play(Write(main_label))
+        heap_cells = VGroup()
+        shadow_cells = VGroup()
 
-        mem_group = VGroup()
+        for i in range(10):
+            h_cell = RoundedRectangle(
+                corner_radius=0.03,
+                width=0.34,
+                height=0.42,
+                color=BLUE,
+                fill_opacity=0.15,
+                stroke_width=2,
+            )
+            heap_cells.add(h_cell)
 
-        # App Memory
-        app_mem = Rectangle(width=3.2, height=6, color=BLUE, fill_opacity=0.1)
-        app_label = Text("Память Приложения", font_size=24, color=BLUE).next_to(
-            app_mem, UP
+            s_cell = RoundedRectangle(
+                corner_radius=0.03,
+                width=0.34,
+                height=0.42,
+                color=GREY,
+                fill_opacity=0.15,
+                stroke_width=2,
+            )
+            shadow_cells.add(s_cell)
+
+        heap_cells.arrange_in_grid(rows=2, cols=5, buff=0.06)
+        heap_cells.move_to(heap_box.get_center())
+
+        shadow_cells.arrange_in_grid(rows=2, cols=5, buff=0.06)
+        shadow_cells.move_to(shadow_box.get_center())
+
+        heap_indices = VGroup()
+        for i in range(10):
+            idx = Text(str(i), font_size=9, color=BLUE_B, weight=BOLD)
+            idx.next_to(heap_cells[i], UP, buff=0.05)
+            heap_indices.add(idx)
+
+        self.play(
+            Create(heap_cells),
+            Create(shadow_cells),
+            *[FadeIn(idx) for idx in heap_indices],
+            run_time=0.8
+        )
+        self.wait(0.5)
+
+        line_height = code.height / 16
+
+        phase1 = Text(
+            "Этап 1: Выделение и маркировка памяти", font_size=16, color=YELLOW
+        )
+        phase1.next_to(title, DOWN, buff=0.25)
+
+        highlight1 = RoundedRectangle(
+            corner_radius=0.05,
+            width=code.width * 0.88,
+            height=line_height * 2,
+            color=RED,
+            fill_color=RED,
+            fill_opacity=0.25,
+            stroke_width=0,
+        )
+        highlight1.align_to(code, LEFT).shift(RIGHT * 0.15)
+        highlight1.move_to(
+            code.get_top() + DOWN * (line_height * 4.05), aligned_edge=UP
         )
 
-        # Shadow Memory
-        shadow_mem = Rectangle(width=3.2, height=6, color=GREY, fill_opacity=0.1)
-        shadow_label = Text("Теневая Память", font_size=24, color=GREY).next_to(
-            shadow_mem, UP
+        self.play(Write(phase1), FadeIn(highlight1), run_time=0.8)
+
+        shadow_vals = VGroup()
+        for i in range(10):
+            val = Text("1", font_size=11, color=RED, weight=BOLD).move_to(
+                shadow_cells[i]
+            )
+            shadow_vals.add(val)
+
+        self.play(*[FadeIn(v, scale=1.3) for v in shadow_vals], run_time=0.8)
+        self.wait(1.2)
+        self.play(FadeOut(highlight1), FadeOut(phase1))
+
+        phase2 = Text("Этап 2: Инициализация ptr[5]", font_size=16, color=YELLOW)
+        phase2.next_to(title, DOWN, buff=0.25)
+
+        highlight2 = RoundedRectangle(
+            corner_radius=0.05,
+            width=code.width * 0.88,
+            height=line_height * 2.1,
+            color=GREEN,
+            fill_color=GREEN,
+            fill_opacity=0.25,
+            stroke_width=0,
+        )
+        highlight2.align_to(code, LEFT).shift(RIGHT * 0.15)
+        highlight2.move_to(
+            code.get_top() + DOWN * (line_height * 7.05), aligned_edge=UP
         )
 
-        blocks = VGroup(app_mem, shadow_mem)
-        blocks.arrange(RIGHT, buff=3.5)
+        self.play(Write(phase2), FadeIn(highlight2), run_time=0.8)
 
-        app_label.next_to(app_mem, UP)
-        shadow_label.next_to(shadow_mem, UP)
+        val_0 = Text("0", font_size=11, color=GREEN, weight=BOLD).move_to(heap_cells[5])
 
-        mem_group.add(app_mem, app_label, shadow_mem, shadow_label)
-        mem_group.scale(0.85)
-        mem_group.move_to(ORIGIN).shift(DOWN * 0.3)
-
-        self.play(Create(mem_group))
-
-        map_arrow = Arrow(
-            app_mem.get_center(), shadow_mem.get_center(), color=YELLOW, buff=0
+        shadow_clean = Text("0", font_size=11, color=GREEN, weight=BOLD).move_to(
+            shadow_cells[5]
         )
-        map_label = Text(
-            "Каждый байт → Shadow байт", font_size=16, color=YELLOW
-        ).next_to(map_arrow, UP)
-        self.play(GrowArrow(map_arrow), Write(map_label))
 
-        def create_byte_block(
-            bits, box_color, text_color, label_text, label_color=WHITE
-        ):
-            bits_group = VGroup()
-            for b in bits:
-                box = Square(side_length=0.3, color=box_color, fill_opacity=0.2)
-                txt = Text(b, font_size=16, color=text_color)
-                txt.move_to(box)
-                bits_group.add(VGroup(box, txt))
-            bits_group.arrange(RIGHT, buff=0)
+        self.play(
+            FadeIn(val_0, scale=1.3),
+            ReplacementTransform(shadow_vals[5], shadow_clean),
+            Indicate(shadow_cells[5], color=GREEN, scale_factor=1.2),
+            run_time=1,
+        )
+        self.wait(1.2)
+        self.play(FadeOut(highlight2), FadeOut(phase2))
 
-            label = Text(label_text, font_size=14, color=label_color)
-            label.next_to(bits_group, UP, buff=0.1)
+        phase3 = Text("Этап 3: Проверка при чтении ptr[0]", font_size=16, color=ORANGE)
+        phase3.next_to(title, DOWN, buff=0.25)
 
-            return VGroup(bits_group, label)
+        highlight3 = RoundedRectangle(
+            corner_radius=0.05,
+            width=code.width * 0.88,
+            height=line_height * 2.1,
+            color=ORANGE,
+            fill_color=ORANGE,
+            fill_opacity=0.25,
+            stroke_width=0,
+        )
+        highlight3.align_to(code, LEFT).shift(RIGHT * 0.15)
+        highlight3.move_to(
+            code.get_top() + DOWN * (line_height * 10.05), aligned_edge=UP
+        )
 
-        # Инициализированная память
-        y1 = app_mem.get_top() + DOWN * 1.8
+        self.play(Write(phase3), FadeIn(highlight3), run_time=0.8)
 
-        row1_app = create_byte_block("10100101", BLUE, WHITE, "Адрес: 0x10", BLUE_A)
-        row1_app.move_to(y1)
-        row1_app.set_x(app_mem.get_x())
+        self.play(
+            Indicate(shadow_cells[0], color=RED, scale_factor=1.3),
+            Indicate(shadow_vals[0], color=RED, scale_factor=1.3),
+            run_time=1,
+        )
 
-        y1_shadow = shadow_mem.get_top() + DOWN * 1.8
-        row1_shadow = create_byte_block("00000000", GREY, GREEN, "Чисто (Clean)", GREEN)
-        row1_shadow.move_to(y1_shadow)
-        row1_shadow.set_x(shadow_mem.get_x())
+        error_box = RoundedRectangle(
+            corner_radius=0.1,
+            width=3.8,
+            height=1.0,
+            color=RED,
+            fill_color=BLACK,
+            fill_opacity=0.95,
+            stroke_width=4,
+        )
+        error_box.next_to(shadow_cells[0], RIGHT, buff=0.35)
 
-        self.play(FadeIn(row1_app))
-        self.play(TransformFromCopy(row1_app[0], row1_shadow[0]), Write(row1_shadow[1]))
+        error_text = VGroup(
+            Text("⚠ UMR ERROR!", font_size=13, color=RED, weight=BOLD),
+            Text("Чтение неинициализированной памяти", font_size=10, color=WHITE),
+        ).arrange(DOWN, buff=0.1)
+        error_text.move_to(error_box)
 
-        # Неинициализированная память
-        y2 = app_mem.get_top() + DOWN * 3.2
-
-        row2_app = create_byte_block("????????", BLUE, RED, "Адрес: 0x20", BLUE_A)
-        row2_app.move_to(y2)
-        row2_app.set_x(app_mem.get_x())
-
-        y2_shadow = shadow_mem.get_top() + DOWN * 3.2
-        row2_shadow = create_byte_block("11111111", GREY, RED, "Мусор (Poisoned)", RED)
-        row2_shadow.move_to(y2_shadow)
-        row2_shadow.set_x(shadow_mem.get_x())
-
-        self.play(FadeIn(row2_app))
-        self.play(TransformFromCopy(row2_app[0], row2_shadow[0]), Write(row2_shadow[1]))
-
-        # Частично инициализированная память
-        y3 = app_mem.get_top() + DOWN * 4.6
-
-        row3_app = create_byte_block("11110000", BLUE, WHITE, "Адрес: 0x30", BLUE_A)
-        row3_app.move_to(y3)
-        row3_app.set_x(app_mem.get_x())
-
-        bits_mixed = VGroup()
-        shadow_bits = "00001111"
-        for b in shadow_bits:
-            c = GREEN if b == "0" else RED
-            box = Square(side_length=0.3, color=GREY, fill_opacity=0.2)
-            txt = Text(b, font_size=16, color=c)
-            txt.move_to(box)
-            bits_mixed.add(VGroup(box, txt))
-        bits_mixed.arrange(RIGHT, buff=0)
-
-        label_partial = Text("Частично (Partial)", font_size=14, color=YELLOW)
-        label_partial.next_to(bits_mixed, UP, buff=0.1)
-
-        row3_shadow = VGroup(bits_mixed, label_partial)
-
-        y3_shadow = shadow_mem.get_top() + DOWN * 4.6
-        row3_shadow.move_to(y3_shadow)
-        row3_shadow.set_x(shadow_mem.get_x())
-
-        self.play(FadeIn(row3_app))
-        self.play(TransformFromCopy(row3_app[0], row3_shadow[0]), Write(label_partial))
-
-        # Легенда
-        legend = VGroup(
-            Text("0 = Иниц.", color=GREEN, font_size=24),
-            Text("|", font_size=24, color=GREY),
-            Text("1 = Не иниц. (Poison)", color=RED, font_size=24),
-        ).arrange(RIGHT, buff=0.5)
-
-        legend.to_edge(DOWN, buff=0.5)
-
-        self.play(Write(legend))
-        self.wait(3)
+        self.play(FadeIn(error_box), Write(error_text), run_time=1)
+        self.wait(2)
 
         self.play(*[FadeOut(mob) for mob in self.mobjects])
