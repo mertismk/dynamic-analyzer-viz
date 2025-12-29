@@ -2,15 +2,6 @@ from manim import *
 from pygments.styles.monokai import MonokaiStyle
 from pygments.token import Name, Keyword
 
-# OFFICIAL DOCUMENTATION
-# Clang Static Analyzer - Taint Analysis:
-# https://clang.llvm.org/docs/analyzer/user-docs/TaintAnalysisConfiguration.html
-#
-# DataFlowSanitizer (DFSan):
-# https://clang.llvm.org/docs/DataFlowSanitizer.html
-# API: dfsan_set_label(), dfsan_get_label()
-# Compilation: clang -fsanitize=dataflow program.c
-
 class TaintStyle(MonokaiStyle):
     styles = MonokaiStyle.styles.copy()
     styles[Name.Function] = "#a6e22e"
@@ -20,7 +11,13 @@ class TaintStyle(MonokaiStyle):
 
 class TaintCompilation(Scene):
     def construct(self):
-        title = Text("Taint Propagation: Процесс компиляции", font_size=36)
+        # Контрастные цвета для легенды/подсветки
+        C_SOURCE = PURPLE
+        C_PROP = ORANGE
+        C_CHECK = TEAL
+        C_SINK = GREEN
+
+        title = Text("Taint Propagation: Dfsan", font_size=36)
         title.to_edge(UP, buff=0.3)
         self.play(Write(title))
         self.wait(0.4)
@@ -30,7 +27,7 @@ class TaintCompilation(Scene):
     char* user_input = getenv("CMD");
     char cmd[256];
     sprintf(cmd, "ls %s", user_input);
-    system(cmd);  // Vulnerability!
+    system(cmd); 
     return 0;
 }"""
 
@@ -57,17 +54,16 @@ class TaintCompilation(Scene):
 
         # Инструментированный код (справа)
         inst_str = """int main() {
-    // DFSan instrumentation:
     char* user_input = getenv("CMD");
-    dfsan_set_label(TAINT, user_input);
-    
+    dfsan_label TAINT = 1;
+    dfsan_set_label(TAINT, user_input, strlen(user_input) + 1);
+
     char cmd[256];
     sprintf(cmd, "ls %s", user_input);
-    // propagation
-    
-    if (dfsan_get_label(cmd) != 0)
+
+    if (dfsan_read_label(cmd, strlen(cmd) + 1) != 0)
         report_vulnerability();
-    
+
     system(cmd);
     return 0;
 }"""
@@ -81,12 +77,12 @@ class TaintCompilation(Scene):
             add_line_numbers=False,
             background_config={
                 "stroke_width": 2,
-                "stroke_color": GREEN,
+                "stroke_color": GREY_B,
                 "fill_color": BLACK,
                 "fill_opacity": 0.9,
             },
         )
-        inst_label = Text("Инструментированный код", font_size=32, color=GREEN)
+        inst_label = Text("Инструментированный код", font_size=32, color=WHITE)
         inst_label.next_to(inst_code, UP, buff=0.12)
 
         inst_grp = VGroup(inst_code, inst_label)
@@ -121,7 +117,7 @@ class TaintCompilation(Scene):
         arrow_right = Arrow(
             compiler.get_right() + UP * 0.3,
             inst_code.get_bottom(),
-            color=GREEN,
+            color=YELLOW,
             stroke_width=4,
             buff=0.12,
         )
@@ -158,17 +154,42 @@ class TaintCompilation(Scene):
             FadeOut(arrow_right),
             FadeOut(compiler),
             FadeOut(compiler_text),
-            inst_grp.animate.move_to(ORIGIN + UP * 0.4).scale(1.05),
+            inst_grp.animate.move_to(ORIGIN + UP * 0.15).scale(1.05),
             run_time=0.7,
         )
-        self.wait(0.3)
+        self.wait(0.25)
+
+        # ЛЕГЕНДА: одна, появляется перед подсветками, расположена НИЖЕ кода
+        legend_box = RoundedRectangle(
+            corner_radius=0.12,
+            width=10.2,
+            height=0.95,
+            color=YELLOW,
+            fill_color=BLACK,
+            fill_opacity=0.25,
+            stroke_width=2,
+        )
+        legend_items = VGroup(
+            VGroup(Dot(color=C_SOURCE), Text("SOURCE: dfsan_set_label", font_size=16, color=C_SOURCE)).arrange(RIGHT, buff=0.18),
+            VGroup(Dot(color=C_PROP), Text("PROPAGATION: операции/вызовы", font_size=16, color=C_PROP)).arrange(RIGHT, buff=0.18),
+            VGroup(Dot(color=C_CHECK), Text("CHECK: dfsan_read_label", font_size=16, color=C_CHECK)).arrange(RIGHT, buff=0.18),
+            VGroup(Dot(color=C_SINK), Text("SINK: system(cmd)", font_size=16, color=C_SINK)).arrange(RIGHT, buff=0.18),
+        ).arrange_in_grid(rows=2, cols=2, buff=(0.9, 0.2), aligned_edge=LEFT)
+
+        legend = VGroup(legend_box, legend_items)
+        legend_items.move_to(legend_box)
+
+        legend.scale(0.85)
+        legend.next_to(inst_code, DOWN, buff=0.25)
+
+        self.play(FadeOut(explanation), run_time=0.35)
+        self.play(FadeIn(legend), run_time=0.5)
 
         # Подсветка по строкам
-        line_count = 14  # реальное число строк в inst_str
+        line_count = len(inst_str.splitlines())
         line_height = inst_code.height / (line_count + 2)
 
         def highlight_lines(first: int, last: int, color):
-            """Создаёт прямоугольник поверх строк [first; last] включительно (1-based)."""
             lines_span = last - first + 1
             rect = RoundedRectangle(
                 corner_radius=0.04,
@@ -180,7 +201,6 @@ class TaintCompilation(Scene):
                 stroke_width=3,
             )
             rect.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
-            # центр блока по вертикали
             rect.move_to(
                 inst_code.get_top()
                 + DOWN * line_height * (first - 0.5),
@@ -188,14 +208,11 @@ class TaintCompilation(Scene):
             )
             return rect
 
-        # dfsan_set_label
-        self.play(FadeOut(explanation), run_time=0.4)
-
-        init_highlight = highlight_lines(3, 4, RED)
+        # SOURCE: dfsan_set_label
+        init_highlight = highlight_lines(3, 4, C_SOURCE)
         init_desc = VGroup(
-            Text("dfsan_set_label()", font_size=14, color=RED, weight=BOLD),
-            Text("SOURCE: помечает user_input как tainted", font_size=12, color=WHITE),
-            Text("Документация: DataFlowSanitizer API", font_size=10, color=BLUE),
+            Text("dfsan_set_label()", font_size=14, color=C_SOURCE, weight=BOLD),
+            Text("SOURCE: помечает байты user_input как tainted", font_size=12, color=WHITE),
         ).arrange(DOWN, buff=0.08)
         init_desc.next_to(init_highlight, LEFT, buff=0.5)
 
@@ -203,11 +220,11 @@ class TaintCompilation(Scene):
         self.wait(1.4)
         self.play(FadeOut(init_highlight), FadeOut(init_desc))
 
-        # sprintf
-        prop_highlight = highlight_lines(6, 7, ORANGE)
+        # PROPAGATION: sprintf
+        prop_highlight = highlight_lines(6, 8, C_PROP)
         prop_desc = VGroup(
-            Text("sprintf()", font_size=14, color=ORANGE, weight=BOLD),
-            Text("PROPAGATION: taint переходит в cmd", font_size=12, color=WHITE),
+            Text("sprintf()", font_size=14, color=C_PROP, weight=BOLD),
+            Text("PROPAGATION: метка может перейти в cmd", font_size=12, color=WHITE),
         ).arrange(DOWN, buff=0.08)
         prop_desc.next_to(prop_highlight, RIGHT, buff=0.5)
 
@@ -215,11 +232,11 @@ class TaintCompilation(Scene):
         self.wait(1.4)
         self.play(FadeOut(prop_highlight), FadeOut(prop_desc))
 
-        # dfsan_get_label + report
-        check_highlight = highlight_lines(9, 10, YELLOW)
+        # CHECK: dfsan_read_label
+        check_highlight = highlight_lines(10, 11, C_CHECK)
         check_desc = VGroup(
-            Text("dfsan_get_label()", font_size=14, color=YELLOW, weight=BOLD),
-            Text("SINK: проверка cmd перед system()", font_size=12, color=WHITE),
+            Text("dfsan_read_label()", font_size=14, color=C_CHECK, weight=BOLD),
+            Text("CHECK: проверка метки cmd перед system()", font_size=12, color=WHITE),
         ).arrange(DOWN, buff=0.08)
         check_desc.next_to(check_highlight, RIGHT, buff=0.5)
 
@@ -227,44 +244,19 @@ class TaintCompilation(Scene):
         self.wait(1.4)
         self.play(FadeOut(check_highlight), FadeOut(check_desc))
 
-        # Финальное резюме
-        summary_box = RoundedRectangle(
-            corner_radius=0.1,
-            width=8.5,
-            height=1.2,
-            color=YELLOW,
-            fill_opacity=0.1,
-            stroke_width=2,
-        )
-        summary_box.to_edge(DOWN, buff=0.5)
+        # SINK: system
+        sink_highlight = highlight_lines(13, 13, C_SINK)
+        sink_desc = VGroup(
+            Text("system()", font_size=14, color=C_SINK, weight=BOLD),
+            Text("SINK: использование данных в опасном вызове", font_size=12, color=WHITE),
+        ).arrange(DOWN, buff=0.08)
+        sink_desc.next_to(sink_highlight, RIGHT, buff=0.5)
 
-        summary_title = Text(
-            "DataFlowSanitizer (DFSan)", font_size=22, color=YELLOW, weight=BOLD
-        )
-        summary_title.next_to(summary_box, UP, buff=0.15)
+        self.play(Create(sink_highlight), FadeIn(sink_desc, shift=LEFT * 0.15))
+        self.wait(1.2)
+        self.play(FadeOut(sink_highlight), FadeOut(sink_desc))
 
-        summary_items = VGroup(
-            VGroup(
-                Circle(radius=0.08, color=RED, fill_opacity=1, stroke_width=0),
-                Text("dfsan_set_label", font_size=11, color=RED, weight=BOLD),
-            ).arrange(RIGHT, buff=0.1),
-            VGroup(
-                Circle(radius=0.08, color=ORANGE, fill_opacity=1, stroke_width=0),
-                Text("propagation через операции", font_size=11, color=ORANGE, weight=BOLD),
-            ).arrange(RIGHT, buff=0.1),
-            VGroup(
-                Circle(radius=0.08, color=YELLOW, fill_opacity=1, stroke_width=0),
-                Text("dfsan_get_label перед sink", font_size=11, color=YELLOW, weight=BOLD),
-            ).arrange(RIGHT, buff=0.1),
-        ).arrange(RIGHT, buff=0.5)
-        summary_items.move_to(summary_box)
-
-        self.play(
-            FadeIn(summary_box),
-            Write(summary_title),
-            FadeIn(summary_items, lag_ratio=0.2),
-            run_time=1.5,
-        )
-        self.wait(2)
+        # Легенду убираем (она больше не нужна)
+        self.play(FadeOut(legend), run_time=0.35)
 
         self.play(*[FadeOut(m) for m in self.mobjects])
