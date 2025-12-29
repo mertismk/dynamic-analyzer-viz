@@ -6,21 +6,26 @@ from pygments.token import Name
 class MSanStyle(MonokaiStyle):
     styles = MonokaiStyle.styles.copy()
     styles[Name.Function] = "#a6e22e"
-    styles[Name.Builtin] = "#66d9ef"
 
 
-class CompilationWithInstrumentation(Scene):
+class CompilationScene(Scene):
     def construct(self):
-        title = Text("MemorySanitizer: Процесс компиляции", font_size=36)
+        title = Text("MemorySanitizer: Процесс компиляции", font_size=40, font="Inter")
         title.to_edge(UP, buff=0.3)
         self.play(Write(title))
         self.wait(0.5)
 
         source_code_str = """int main() {
-    int* ptr = new int[10];
-    ptr[5] = 0;
-    if (ptr[0]) { }
-    delete[] ptr;
+    int* arr = new int[5];
+    arr[0] = 10;
+    arr[1] = 20;
+    arr[3] = 40;
+    arr[4] = 50;
+    
+    if (arr[0]) { }
+    if (arr[2]) { }
+    
+    delete[] arr;
 }"""
 
         source_code = Code(
@@ -38,30 +43,39 @@ class CompilationWithInstrumentation(Scene):
             },
         )
 
-        source_label = Text("Исходный код", font_size=16, color=WHITE)
-        source_label.next_to(source_code, UP, buff=0.12)
+        source_label = Text("Исходный код", font_size=18, color=WHITE, font="Inter")
+        source_label.next_to(source_code, UP, buff=0.15)
 
         source_grp = VGroup(source_code, source_label)
-        source_grp.scale(0.7).to_edge(LEFT, buff=0.8).shift(UP * 0.8)
+        source_grp.scale(0.75).to_edge(LEFT, buff=0.8).shift(UP * 0.8)
 
-        self.play(Create(source_code), Write(source_label))
+        self.play(
+            FadeIn(source_code, shift=RIGHT * 0.3, scale=0.9),
+            Write(source_label, run_time=0.8),
+            run_time=1.2,
+        )
         self.wait(0.6)
 
         compiler = RoundedRectangle(
             corner_radius=0.12,
-            width=2.2,
-            height=1.6,
+            width=2.4,
+            height=1.8,
             color=BLUE,
             fill_opacity=0.15,
             stroke_width=3,
         )
-        compiler.move_to(DOWN * 1.2)
+        compiler.next_to(source_code, DOWN, buff=0.8)
 
         compiler_text = VGroup(
-            Text("Clang", font_size=20, weight=BOLD, color=BLUE),
-            Text("-fsanitize=", font_size=13, color=GREY),
-            Text("memory", font_size=13, color=YELLOW, weight=BOLD),
-        ).arrange(DOWN, buff=0.1)
+            Text("Clang", font_size=22, weight=BOLD, color=BLUE, font="Inter"),
+            Text(
+                "-fsanitize=memory",
+                font_size=15,
+                color=YELLOW,
+                weight=BOLD,
+                font="Inter",
+            ),
+        ).arrange(DOWN, buff=0.15)
         compiler_text.move_to(compiler)
 
         arrow_to_compiler = CurvedArrow(
@@ -81,18 +95,25 @@ class CompilationWithInstrumentation(Scene):
         self.wait(0.6)
 
         inst_code_str = """int main() {
-    __msan_init();
+    int* arr = new int[5];
+    __msan_allocated_memory(arr, 20);
 
-    int* ptr = new int[10];
-    __msan_poison(ptr, 40);
+    arr[0] = 10;
+    __msan_unpoison(&arr[0], 4);
+    arr[1] = 20;
+    __msan_unpoison(&arr[1], 4);
+    arr[3] = 40;
+    __msan_unpoison(&arr[3], 4);
+    arr[4] = 50;
+    __msan_unpoison(&arr[4], 4);
 
-    ptr[5] = 0;
-    __msan_unpoison(&ptr[5], 4);
+    __msan_check_mem_is_initialized(&arr[0], 4);
+    if (arr[0]) { }
 
-    __msan_check(&ptr[0], 4);
-    if (ptr[0]) { }
+    __msan_check_mem_is_initialized(&arr[2], 4);
+    if (arr[2]) { }
 
-    delete[] ptr;
+    delete[] arr;
 }"""
 
         inst_code = Code(
@@ -101,7 +122,7 @@ class CompilationWithInstrumentation(Scene):
             tab_width=4,
             formatter_style=MSanStyle,
             background="rectangle",
-            add_line_numbers=False,
+            add_line_numbers=True,
             background_config={
                 "stroke_width": 2,
                 "stroke_color": GREEN,
@@ -110,11 +131,13 @@ class CompilationWithInstrumentation(Scene):
             },
         )
 
-        inst_label = Text("Инструментированный код", font_size=16, color=GREEN)
-        inst_label.next_to(inst_code, UP, buff=0.12)
+        inst_label = Text(
+            "Инструментированный код", font_size=18, color=GREEN, font="Inter"
+        )
+        inst_label.next_to(inst_code, UP, buff=0.15)
 
         inst_grp = VGroup(inst_code, inst_label)
-        inst_grp.scale(0.62).to_edge(RIGHT, buff=0.8).shift(UP * 0.8)
+        inst_grp.scale(0.58).to_edge(RIGHT, buff=0.7).shift(UP * 0.5)
 
         arrow_from_compiler = CurvedArrow(
             compiler.get_right() + UP * 0.3,
@@ -130,186 +153,17 @@ class CompilationWithInstrumentation(Scene):
             Write(inst_label),
             run_time=1,
         )
-        self.wait(1)
-
-        explanation = Text(
-            "Компилятор автоматически вставляет:", font_size=15, color=YELLOW
-        )
-        explanation.next_to(title, DOWN, buff=0.2)
-        self.play(Write(explanation))
-        self.wait(0.5)
-
-        self.play(
-            FadeOut(source_grp),
-            FadeOut(arrow_to_compiler),
-            FadeOut(arrow_from_compiler),
-            FadeOut(compiler),
-            FadeOut(compiler_text),
-            inst_grp.animate.move_to(ORIGIN + UP * 0.3).scale(1.15),
-            run_time=0.8,
-        )
-        self.wait(0.3)
-
-        line_height = inst_code.height / 16
-
-        init_highlight = RoundedRectangle(
-            corner_radius=0.04,
-            width=inst_code.width * 0.85,
-            height=line_height * 1.0,
-            color=BLUE,
-            fill_color=BLUE,
-            fill_opacity=0.25,
-            stroke_width=3,
-        )
-        init_highlight.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
-        init_highlight.move_to(
-            inst_code.get_top() + DOWN * (line_height * 2.05), aligned_edge=UP
-        )
-
-        init_desc = VGroup(
-            Text("__msan_init()", font_size=13, color=BLUE, weight=BOLD),
-            Text("↓", font_size=10, color=BLUE),
-            Text("Инициализация MSan", font_size=11, color=WHITE),
-        ).arrange(DOWN, buff=0.08)
-        init_desc.next_to(init_highlight, LEFT, buff=0.4)
-
-        self.play(
-            Create(init_highlight), FadeIn(init_desc, shift=RIGHT * 0.15), run_time=0.8
-        )
-        self.wait(1.2)
-        self.play(FadeOut(init_highlight), FadeOut(init_desc), run_time=0.5)
-
-        poison_highlight = RoundedRectangle(
-            corner_radius=0.04,
-            width=inst_code.width * 0.85,
-            height=line_height * 1.0,
-            color=RED,
-            fill_color=RED,
-            fill_opacity=0.25,
-            stroke_width=3,
-        )
-        poison_highlight.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
-        poison_highlight.move_to(
-            inst_code.get_top() + DOWN * (line_height * 5.05), aligned_edge=UP
-        )
-
-        poison_desc = VGroup(
-            Text("__msan_poison()", font_size=13, color=RED, weight=BOLD),
-            Text("↓", font_size=10, color=RED),
-            Text("Пометить память как", font_size=11, color=WHITE),
-            Text("неинициализированную", font_size=11, color=RED),
-        ).arrange(DOWN, buff=0.05)
-        poison_desc.next_to(poison_highlight, LEFT, buff=0.35)
-
-        self.play(
-            Create(poison_highlight),
-            FadeIn(poison_desc, shift=RIGHT * 0.15),
-            run_time=0.8,
-        )
-        self.wait(1.2)
-        self.play(FadeOut(poison_highlight), FadeOut(poison_desc), run_time=0.5)
-
-        unpoison_highlight = RoundedRectangle(
-            corner_radius=0.04,
-            width=inst_code.width * 0.85,
-            height=line_height * 1.0,
-            color=GREEN,
-            fill_color=GREEN,
-            fill_opacity=0.25,
-            stroke_width=3,
-        )
-        unpoison_highlight.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
-        unpoison_highlight.move_to(
-            inst_code.get_top() + DOWN * (line_height * 8.05), aligned_edge=UP
-        )
-
-        unpoison_desc = VGroup(
-            Text("__msan_unpoison()", font_size=13, color=GREEN, weight=BOLD),
-            Text("↓", font_size=10, color=GREEN),
-            Text("Пометить память как", font_size=11, color=WHITE),
-            Text("инициализированную", font_size=11, color=GREEN),
-        ).arrange(DOWN, buff=0.05)
-        unpoison_desc.next_to(unpoison_highlight, RIGHT, buff=0.35)
-
-        self.play(
-            Create(unpoison_highlight),
-            FadeIn(unpoison_desc, shift=LEFT * 0.15),
-            run_time=0.8,
-        )
-        self.wait(1.2)
-        self.play(FadeOut(unpoison_highlight), FadeOut(unpoison_desc), run_time=0.5)
-
-        check_highlight = RoundedRectangle(
-            corner_radius=0.04,
-            width=inst_code.width * 0.85,
-            height=line_height * 1.0,
-            color=ORANGE,
-            fill_color=ORANGE,
-            fill_opacity=0.25,
-            stroke_width=3,
-        )
-        check_highlight.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
-        check_highlight.move_to(
-            inst_code.get_top() + DOWN * (line_height * 10.05), aligned_edge=UP
-        )
-
-        check_desc = VGroup(
-            Text("__msan_check()", font_size=13, color=ORANGE, weight=BOLD),
-            Text("↓", font_size=10, color=ORANGE),
-            Text("Проверить память", font_size=11, color=WHITE),
-            Text("перед использованием", font_size=11, color=ORANGE),
-        ).arrange(DOWN, buff=0.05)
-        check_desc.next_to(check_highlight, RIGHT, buff=0.35)
-
-        self.play(
-            Create(check_highlight), FadeIn(check_desc, shift=LEFT * 0.15), run_time=0.8
-        )
-        self.wait(1.2)
-        self.play(FadeOut(check_highlight), FadeOut(check_desc), run_time=0.5)
-
-        self.play(FadeOut(explanation), run_time=0.5)
-
-        summary_box = RoundedRectangle(
-            corner_radius=0.1,
-            width=7,
-            height=1.2,
-            color=YELLOW,
-            fill_opacity=0.1,
-            stroke_width=2,
-        )
-        summary_box.to_edge(DOWN, buff=0.5)
-
-        summary_title = Text(
-            "Функции MemorySanitizer:", font_size=14, color=YELLOW, weight=BOLD
-        )
-        summary_title.next_to(summary_box, UP, buff=0.15)
-
-        summary_items = VGroup(
-            VGroup(
-                Circle(radius=0.08, color=BLUE, fill_opacity=1, stroke_width=0),
-                Text("__msan_init", font_size=11, color=BLUE, weight=BOLD),
-            ).arrange(RIGHT, buff=0.1),
-            VGroup(
-                Circle(radius=0.08, color=RED, fill_opacity=1, stroke_width=0),
-                Text("__msan_poison", font_size=11, color=RED, weight=BOLD),
-            ).arrange(RIGHT, buff=0.1),
-            VGroup(
-                Circle(radius=0.08, color=GREEN, fill_opacity=1, stroke_width=0),
-                Text("__msan_unpoison", font_size=11, color=GREEN, weight=BOLD),
-            ).arrange(RIGHT, buff=0.1),
-            VGroup(
-                Circle(radius=0.08, color=ORANGE, fill_opacity=1, stroke_width=0),
-                Text("__msan_check", font_size=11, color=ORANGE, weight=BOLD),
-            ).arrange(RIGHT, buff=0.1),
-        ).arrange(RIGHT, buff=0.5)
-        summary_items.move_to(summary_box)
-
-        self.play(
-            FadeIn(summary_box),
-            Write(summary_title),
-            FadeIn(summary_items, lag_ratio=0.2),
-            run_time=1.5,
-        )
         self.wait(2)
 
-        self.play(*[FadeOut(mob) for mob in self.mobjects])
+        self.play(
+            FadeOut(title, shift=UP * 0.3),
+            FadeOut(source_grp, shift=LEFT * 0.5),
+            FadeOut(arrow_to_compiler, shift=DOWN * 0.3),
+            FadeOut(arrow_from_compiler, shift=DOWN * 0.3),
+            FadeOut(compiler, scale=0.8),
+            FadeOut(compiler_text, scale=0.8),
+            inst_grp.animate.scale(1.1).move_to(LEFT * 3.5 + DOWN * 0.3),
+            run_time=1.2,
+            rate_func=smooth,
+        )
+        self.wait(0.5)
