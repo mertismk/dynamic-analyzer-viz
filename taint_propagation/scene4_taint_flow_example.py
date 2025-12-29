@@ -1,0 +1,210 @@
+from manim import *
+from pygments.styles.monokai import MonokaiStyle
+from pygments.token import Name, Keyword
+
+
+class TaintStyle(MonokaiStyle):
+    styles = MonokaiStyle.styles.copy()
+    styles[Name.Function] = "#a6e22e"
+    styles[Name.Builtin] = "#66d9ef"
+    styles[Keyword] = "#f92672"
+
+
+class TaintFlowExample(Scene):
+    def construct(self):
+        title = Text("Taint Propagation: Heap Flow", font_size=36)
+        title.to_edge(UP, buff=0.3)
+        self.play(Write(title))
+        self.wait(0.4)
+
+        subtitle = Text(
+            "Taint перемещается через кучу при выделении и копировании данных",
+            font_size=16,
+            color=YELLOW,
+        )
+        subtitle.next_to(title, DOWN, buff=0.25)
+        self.play(Write(subtitle))
+        self.wait(0.7)
+        self.play(FadeOut(subtitle))
+
+        # Блок кода
+        code_str = """char *get_user_input() {
+    char *env = getenv("USER");
+    if (!env) return NULL;
+
+    size_t len = strlen(env);
+    char *buf = (char *)malloc(len + 1);
+    if (!buf) return NULL;
+
+    strcpy(buf, env);
+    return buf;
+}
+
+void handle_request() {
+    char *user = get_user_input();
+    if (!user) return;
+
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "echo Hello %s", user);
+    system(cmd);
+    free(user);
+}"""
+
+        code = Code(
+            code_string=code_str,
+            language="c++",
+            tab_width=4,
+            formatter_style=TaintStyle,
+            background="rectangle",
+            add_line_numbers=False,
+            background_config={
+                "stroke_width": 2,
+                "stroke_color": GREEN,
+                "fill_color": BLACK,
+                "fill_opacity": 0.9,
+            },
+        )
+
+        code_label = Text(
+            "Пример taint-потока через кучу (heap)",
+            font_size=16,
+            color=GREEN,
+        )
+        code_label.next_to(code, UP, buff=0.12)
+
+        code_grp = VGroup(code, code_label)
+        code_grp.scale(0.55)
+        code_grp.move_to(UP * 0.5)
+
+        self.play(Create(code), Write(code_label))
+        self.wait(0.6)
+
+        # Подсветка блоков
+        line_count = 20
+        line_height = code.height / (line_count + 2)
+
+        def highlight_lines(first: int, last: int, color):
+            span = last - first + 1
+            rect = RoundedRectangle(
+                corner_radius=0.04,
+                width=code.width * 0.96,
+                height=line_height * span,
+                color=color,
+                fill_color=color,
+                fill_opacity=0.22,
+                stroke_width=2.5,
+            )
+            rect.move_to(
+                code.get_top() + DOWN * line_height * (first - 0.5),
+                aligned_edge=UP,
+            )
+            return rect
+
+        def show_step(first, last, color, title, text, side="left"):
+            hl = highlight_lines(first, last, color)
+            desc = VGroup(
+                Text(title, font_size=12, color=color, weight=BOLD),
+                Text(text, font_size=10, color=WHITE),
+            ).arrange(DOWN, buff=0.05, aligned_edge=LEFT)
+
+            shift_dir = LEFT if side == "left" else RIGHT
+            desc.next_to(hl, shift_dir, buff=0.35)
+
+            self.play(Create(hl), FadeIn(desc, shift=(-shift_dir) * 0.15))
+            self.wait(1.6)
+            self.play(FadeOut(hl), FadeOut(desc))
+
+        # 1. SOURCE: чтение из окружения
+        show_step(
+            first=1,
+            last=3,
+            color=RED,
+            title="SOURCE: getenv(\"USER\")",
+            text="""Входные данные приходят из окружения
+и помечаются taint-меткой""",
+            side="left",
+        )
+
+        # 2. Выделение памяти в куче
+        show_step(
+            first=5,
+            last=7,
+            color=ORANGE,
+            title="Heap allocation",
+            text="Выделяем буфер в куче под пользовательскую строку",
+            side="right",
+        )
+
+        # 3. Propagation при копировании в буфер
+        show_step(
+            first=9,
+            last=9,
+            color=YELLOW,
+            title="Propagation в heap",
+            text="strcpy копирует данные вместе с их taint-меткой в буфер",
+            side="left",
+        )
+
+        # 4. Передача taint в стек и далее в команду
+        show_step(
+            first=13,
+            last=15,
+            color=BLUE,
+            title="Трансфер heap → stack → sink",
+            text="taint из user попадает в cmd и затем в system(cmd) (sink)",
+            side="right",
+        )
+
+        # Легенда снизу
+        legend_box = RoundedRectangle(
+            corner_radius=0.1,
+            width=14,
+            height=1.3,
+            color=YELLOW,
+            fill_opacity=0.1,
+            stroke_width=2,
+        )
+        legend_box.to_edge(DOWN, buff=0.4)
+
+        legend_title = Text(
+            "Taint-поток через кучу", font_size=14, color=YELLOW, weight=BOLD
+        )
+        legend_title.next_to(legend_box, UP, buff=0.12)
+
+        item1 = VGroup(
+            Circle(radius=0.08, color=RED, fill_opacity=1, stroke_width=0),
+            Text("SOURCE: taint появляется в env/getenv()", font_size=11, color=RED),
+        ).arrange(RIGHT, buff=0.06)
+
+        item2 = VGroup(
+            Circle(radius=0.08, color=ORANGE, fill_opacity=1, stroke_width=0),
+            Text("Heap: данные копируются в выделенный буфер", font_size=11, color=ORANGE),
+        ).arrange(RIGHT, buff=0.06)
+
+        item3 = VGroup(
+            Circle(radius=0.08, color=YELLOW, fill_opacity=1, stroke_width=0),
+            Text("Propagation: strcpy/snprintf переносят taint", font_size=11, color=YELLOW),
+        ).arrange(RIGHT, buff=0.06)
+
+        item4 = VGroup(
+            Circle(radius=0.08, color=GREEN, fill_opacity=1, stroke_width=0),
+            Text("SINK: system(cmd) использует tainted строку", font_size=11, color=GREEN),
+        ).arrange(RIGHT, buff=0.06)
+
+        legend_items = VGroup(item1, item2, item3, item4).arrange_in_grid(
+            rows=2,
+            cols=2,
+            buff=(0.6, 0.25),
+            aligned_edge=LEFT,
+        )
+        legend_items.move_to(legend_box)
+
+        self.play(
+            FadeIn(legend_box),
+            Write(legend_title),
+            FadeIn(legend_items, lag_ratio=0.2),
+            run_time=1.5,
+        )
+        self.wait(2.0)
+
+        self.play(*[FadeOut(m) for m in self.mobjects])
