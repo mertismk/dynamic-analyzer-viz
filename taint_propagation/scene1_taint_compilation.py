@@ -2,14 +2,6 @@ from manim import *
 from pygments.styles.monokai import MonokaiStyle
 from pygments.token import Name, Keyword
 
-# OFFICIAL DOCUMENTATION
-# Clang Static Analyzer - Taint Analysis:
-# https://clang.llvm.org/docs/analyzer/user-docs/TaintAnalysisConfiguration.html
-
-# DataFlowSanitizer (DFSan) user doc:
-# https://clang.llvm.org/docs/DataFlowSanitizer.html
-# DFSan API (полный список интерфейса):
-# https://clang.llvm.org/docs/DataFlowSanitizerDesign.html
 
 class TaintStyle(MonokaiStyle):
     styles = MonokaiStyle.styles.copy()
@@ -17,14 +9,70 @@ class TaintStyle(MonokaiStyle):
     styles[Name.Builtin] = "#66d9ef"
     styles[Keyword] = "#f92672"
 
+
 def code_box(code_obj: Mobject) -> Mobject:
     return getattr(code_obj, "background_mobject", code_obj)
+
+
+def make_code_highlight(
+    code_obj: Mobject,
+    *,
+    total_lines: int,
+    first: int,
+    last: int,
+    width_scale: float,
+    height_scale: float,
+    corner_radius: float,
+    stroke_width: float,
+    stroke_color,
+    fill_opacity: float,
+    fill_color=None,
+    x_pad_align: float = 0.20,   # сдвиг вправо после align_to(LEFT)
+    top_pad_lines: float = 0.8,  # то самое "0.8" в твоей формуле
+) -> RoundedRectangle:
+    """
+    Универсальная рамка/подсветка по строкам для Code.
+
+    Ты задаёшь только:
+      - total_lines (кол-во строк)
+      - first/last (диапазон строк)
+
+    Остальные параметры (цвета/толщина/скругление/масштабы ширины-высоты)
+    передаются как константы, чтобы их не дублировать.
+
+    Логика позиционирования и расчёта высоты сохранена как в твоей версии.
+    """
+    frame = code_box(code_obj)
+    line_height = frame.height / (total_lines + top_pad_lines)
+
+    lines_span = last - first + 1
+    rect = RoundedRectangle(
+        corner_radius=corner_radius,
+        width=frame.width * width_scale,
+        height=line_height * lines_span * height_scale,
+        color=stroke_color,
+        stroke_width=stroke_width,
+        fill_opacity=fill_opacity,
+        fill_color=(fill_color if fill_color is not None else stroke_color),
+    )
+
+    rect.align_to(frame, LEFT).shift(RIGHT * x_pad_align)
+
+    code_top = frame.get_top()
+    first_line_center = code_top + DOWN * (line_height * top_pad_lines)
+    target_center = first_line_center + DOWN * line_height * (first - 1)
+    span_center = target_center + DOWN * line_height * (lines_span - 1) * 0.5
+    rect.move_to([rect.get_center()[0], span_center[1], 0])
+
+    return rect
+
 
 class TaintCompilationFixed(Scene):
     def construct(self):
         LEFT_PANEL_POS = LEFT * 4.5 + DOWN * 0.2
         RIGHT_PANEL_POS = RIGHT * 4.25 + DOWN * 0.2
         CENTER_PANEL_POS = ORIGIN + UP * 0.15
+
         C_SOURCE = PURPLE
         C_PROP = ORANGE
         C_CHECK = TEAL
@@ -43,7 +91,7 @@ class TaintCompilationFixed(Scene):
     system(cmd);
     return 0;
 }"""
-        
+
         source_code = Code(
             code_string=source_str,
             language="c++",
@@ -58,7 +106,7 @@ class TaintCompilationFixed(Scene):
                 "fill_opacity": 0.9,
             },
         )
-        
+
         source_label = Text("Исходный код", font_size=32, color=WHITE)
         source_label.next_to(code_box(source_code), UP, buff=0.12)
         source_grp = VGroup(source_code, source_label).scale(0.55)
@@ -95,7 +143,7 @@ class TaintCompilationFixed(Scene):
         self.play(Create(arrow_left))
         self.wait(0.4)
 
-        # ====== АНИМАЦИЯ ВДВИГАНИЯ СТРОК ======
+        # Базовый код справа
         base_str = """int main() {
     char* user_input = getenv("CMD");
     char cmd[256];
@@ -145,7 +193,7 @@ class TaintCompilationFixed(Scene):
         self.play(Create(arrow_right))
         self.wait(0.5)
 
-        # Добавляемые блоки С СЕРЫМИ РАМОЧКАМИ (ПЕРВЫЙ ЭКРАН)
+        # Добавляемые блоки
         added_1_str = """    dfsan_label TAINT = 1;
     dfsan_set_label(TAINT, user_input,
                     strlen(user_input) + 1);"""
@@ -204,12 +252,13 @@ class TaintCompilationFixed(Scene):
         self.play(FadeIn(added_2, shift=LEFT * 0.3))
         self.wait(0.5)
 
-        # Финальный инструментированный код (для Transform)
+        # Финальный инструментированный код
         inst_str = """int main() {
     char* user_input = getenv("CMD");
     dfsan_label TAINT = 1;
     dfsan_set_label(TAINT, user_input,
                     strlen(user_input) + 1);
+
     char cmd[256];
     sprintf(cmd, "ls %s", user_input);
 
@@ -235,72 +284,105 @@ class TaintCompilationFixed(Scene):
                 "fill_opacity": 0.9,
             },
         ).scale(0.55)
+
         inst_code.move_to(base_code)
         inst_code.shift(code_box(base_code).get_center() - code_box(inst_code).get_center())
 
+        # ВАЖНО: добавляем inst_code заранее, но делаем его невидимым
+        self.add(inst_code)
+        inst_code.set_opacity(0)
+
+        # 1) Замена base_code -> inst_code (лейбл/стрелка ПОКА остаются привязаны к base_code)
         self.play(
-            Transform(base_code, inst_code),
+            ReplacementTransform(base_code, inst_code),
+            inst_code.animate.set_opacity(1),
             FadeOut(added_1),
             FadeOut(added_2),
             run_time=1.0,
         )
 
-        # Выделение добавленных строк серыми рамками
-        code_frame = code_box(base_code)  # используем base_code, т.к. это target Transform
-        line_count = len(inst_str.splitlines())
-        line_height = code_frame.height / (line_count + 0.8)
-
-        def make_highlight_rect(first: int, last: int, color=GREY):
-            lines_span = last - first + 1
-            rect = RoundedRectangle(
-                corner_radius=0.08,
-                width=code_frame.width * 0.88,
-                height=line_height * lines_span * 0.90,
-                color=color,
-                stroke_width=3,
-                fill_opacity=0,  # прозрачная заливка, только рамка
-            )
-            rect.align_to(code_frame, LEFT).shift(RIGHT * 0.15)
-            
-            code_top = code_frame.get_top()
-            first_line_center = code_top + DOWN * (line_height * 0.8)
-            target_center = first_line_center + DOWN * line_height * (first - 1)
-            span_center = target_center + DOWN * line_height * (lines_span - 1) * 0.5
-            rect.move_to([rect.get_center()[0], span_center[1], 0])
-            return rect
-
-        # Рамка вокруг dfsan_label блока (строки 3-5)
-        highlight_box_1 = make_highlight_rect(3, 5, GREY)
-
-        # Рамка вокруг if блока (строки 9-11) 
-        highlight_box_2 = make_highlight_rect(9, 11, GREY)
-
-        # Показываем рамки
-        self.play(
-            Create(highlight_box_1),
-            Create(highlight_box_2),
-            run_time=0.6
-        )
-        self.wait(1.0)
-
-        # Убираем рамки перед следующей сценой
-        self.play(
-            FadeOut(highlight_box_1),
-            FadeOut(highlight_box_2),
-            run_time=0.4
-        )
-
-        # УВЕЛИЧЕНА ПАУЗА после Transform
-        self.wait(1.2)
-
+        # Плавно "пересадить" лейбл и стрелку на inst_code (без телепорта)
         inst_label.clear_updaters()
         arrow_right.clear_updaters()
 
-        to_remove = [source_grp, arrow_left, arrow_right, compiler, compiler_text, explanation, base_code, inst_label]
-        self.play(*[FadeOut(mob) for mob in to_remove], run_time=0.5)
-        self.wait(0.1)
+        target_label_pos = inst_label.copy().next_to(code_box(inst_code), UP, buff=0.12).get_center()
 
-        # Центровая версия кода для подсветок (БЕЗ РАМОЧЕК)
+        target_arrow = Arrow(
+            compiler.get_right() + UP * 0.3,
+            code_box(inst_code).get_bottom(),
+            color=YELLOW,
+            stroke_width=4,
+            buff=0.12,
+        )
+
+        self.play(
+            inst_label.animate.move_to(target_label_pos),
+            Transform(arrow_right, target_arrow),
+            run_time=0.35,
+        )
+
+        inst_label.add_updater(lambda m: m.next_to(code_box(inst_code), UP, buff=0.12))
+
+        def arrow_right_updater2(m: Arrow):
+            m.put_start_and_end_on(
+                compiler.get_right() + UP * 0.3,
+                code_box(inst_code).get_bottom(),
+            )
+
+        arrow_right.add_updater(arrow_right_updater2)
+
+        # ===== УПРОЩЁННЫЕ РАМКИ (нужно только: total_lines, first, last) =====
+        TOTAL_LINES_INST = len(inst_str.splitlines())
+
+        highlight_box_1 = make_code_highlight(
+            inst_code,
+            total_lines=TOTAL_LINES_INST,
+            first=3,
+            last=5,
+            width_scale=0.74,
+            height_scale=1.0,
+            corner_radius=0.08,
+            stroke_width=3,
+            stroke_color=GREY,
+            fill_opacity=0.0,
+            x_pad_align=0.20,
+            top_pad_lines=0.8,
+        )
+
+        highlight_box_2 = make_code_highlight(
+            inst_code,
+            total_lines=TOTAL_LINES_INST,
+            first=10,
+            last=12,
+            width_scale=0.74,
+            height_scale=1.0,
+            corner_radius=0.08,
+            stroke_width=3,
+            stroke_color=GREY,
+            fill_opacity=0.0,
+            x_pad_align=0.20,
+            top_pad_lines=0.8,
+        )
+        # ===================================================================
+
+        self.play(Create(highlight_box_1), Create(highlight_box_2), run_time=0.6)
+        self.wait(1.0)
+        self.play(FadeOut(highlight_box_1), FadeOut(highlight_box_2), run_time=0.4)
+        self.wait(0.6)
+
+        # 3) Убираем окружение, но НЕ inst_code и НЕ inst_label
+        to_remove = [source_grp, arrow_left, arrow_right, compiler, compiler_text, explanation]
+        self.play(*[FadeOut(mob) for mob in to_remove], run_time=0.45)
+        self.wait(0.05)
+
+        # 4) Плавно перемещаем код + лейбл (лейбл продолжает следовать апдейтером)
+        CENTER_TARGET = CENTER_PANEL_POS + LEFT * 0.12
+        self.play(inst_code.animate.move_to(CENTER_TARGET), run_time=0.8)
+
+        # фиксируем лейбл (чтобы дальше не дрожал от пересчётов)
+        inst_label.clear_updaters()
+
+        # 5) Создаем "чистый" final_inst_code прямо поверх inst_code и бесшовно заменяем
         final_inst_code = Code(
             code_string=inst_str,
             language="c++",
@@ -315,12 +397,18 @@ class TaintCompilationFixed(Scene):
                 "fill_opacity": 0.9,
             },
         ).scale(0.55)
-        final_inst_code.move_to(CENTER_PANEL_POS + LEFT * 0.12)
+
+        final_inst_code.move_to(inst_code)
+        final_inst_code.shift(code_box(inst_code).get_center() - code_box(final_inst_code).get_center())
 
         final_inst_label = Text("Инструментированный код", font_size=32, color=WHITE).scale(0.55)
-        final_inst_label.next_to(code_box(final_inst_code), UP, buff=0.12)
+        final_inst_label.move_to(inst_label)
 
-        self.play(FadeIn(final_inst_code), FadeIn(final_inst_label), run_time=0.5)
+        self.play(
+            ReplacementTransform(inst_code, final_inst_code),
+            ReplacementTransform(inst_label, final_inst_label),
+            run_time=0.45,
+        )
         self.wait(0.5)
 
         # ЛЕГЕНДА
@@ -334,13 +422,19 @@ class TaintCompilationFixed(Scene):
             stroke_width=2,
         )
 
-        # Создаем элементы легенды
-        source_item = VGroup(Dot(color=C_SOURCE), Text("SOURCE: dfsan_set_label", font_size=16, color=C_SOURCE)).arrange(RIGHT, buff=0.18)
-        prop_item = VGroup(Dot(color=C_PROP), Text("PROPAGATION: операции/вызовы", font_size=16, color=C_PROP)).arrange(RIGHT, buff=0.18)
-        check_item = VGroup(Dot(color=C_CHECK), Text("CHECK: dfsan_read_label", font_size=16, color=C_CHECK)).arrange(RIGHT, buff=0.18)
-        sink_item = VGroup(Dot(color=C_SINK), Text("SINK: system(cmd)", font_size=16, color=C_SINK)).arrange(RIGHT, buff=0.18)
+        source_item = VGroup(Dot(color=C_SOURCE), Text("SOURCE: dfsan_set_label", font_size=16, color=C_SOURCE)).arrange(
+            RIGHT, buff=0.18
+        )
+        prop_item = VGroup(Dot(color=C_PROP), Text("PROPAGATION: операции/вызовы", font_size=16, color=C_PROP)).arrange(
+            RIGHT, buff=0.18
+        )
+        check_item = VGroup(Dot(color=C_CHECK), Text("CHECK: dfsan_read_label", font_size=16, color=C_CHECK)).arrange(
+            RIGHT, buff=0.18
+        )
+        sink_item = VGroup(Dot(color=C_SINK), Text("SINK: system(cmd)", font_size=16, color=C_SINK)).arrange(
+            RIGHT, buff=0.18
+        )
 
-        # Выравниваем по сетке с одинаковой шириной колонок
         legend_items = VGroup(
             source_item,
             prop_item,
@@ -355,37 +449,74 @@ class TaintCompilationFixed(Scene):
 
         self.play(FadeIn(legend), run_time=0.5)
 
-        # Функция подсветки для аннотаций
-        code_frame = code_box(final_inst_code)
-        line_count = len(inst_str.splitlines())
-        line_height = code_frame.height / (line_count + 0.8)
+        # ===== УПРОЩЁННЫЕ ПОДСВЕТКИ (нужно только: total_lines, first, last) =====
+        TOTAL_LINES_FINAL = len(inst_str.splitlines())
 
-        def highlight_lines(first: int, last: int, color):
-            lines_span = last - first + 1
-            rect = RoundedRectangle(
-                corner_radius=0.04,
-                width=code_frame.width * 0.88,
-                height=line_height * lines_span * 0.90,
-                color=color,
-                fill_color=color,
-                fill_opacity=0.25,
-                stroke_width=3,
-            )
-            rect.align_to(code_frame, LEFT).shift(RIGHT * 0.15)
-            code_top = code_frame.get_top()
-            first_line_center = code_top + DOWN * (line_height * 0.8)
-            target_center = first_line_center + DOWN * line_height * (first - 1)
-            span_center = target_center + DOWN * line_height * (lines_span - 1) * 0.5
-            rect.move_to([rect.get_center()[0], span_center[1], 0])
-            return rect
+        source_highlight = make_code_highlight(
+            final_inst_code,
+            total_lines=TOTAL_LINES_FINAL,
+            first=3,
+            last=5,
+            width_scale=0.93,
+            height_scale=1.05,
+            corner_radius=0.04,
+            stroke_width=3,
+            stroke_color=C_SOURCE,
+            fill_opacity=0.25,
+            fill_color=C_SOURCE,
+            x_pad_align=0.20,
+            top_pad_lines=0.8,
+        )
 
-        # Создаем все рамки сразу (они остаются видны)
-        source_highlight = highlight_lines(3, 5, C_SOURCE)
-        prop_highlight = highlight_lines(6, 7, C_PROP)
-        check_highlight = highlight_lines(9, 11, C_CHECK)
-        sink_highlight = highlight_lines(13, 13, C_SINK)
+        prop_highlight = make_code_highlight(
+            final_inst_code,
+            total_lines=TOTAL_LINES_FINAL,
+            first=7,
+            last=8,
+            width_scale=0.93,
+            height_scale=1.05,
+            corner_radius=0.04,
+            stroke_width=3,
+            stroke_color=C_PROP,
+            fill_opacity=0.25,
+            fill_color=C_PROP,
+            x_pad_align=0.20,
+            top_pad_lines=0.8,
+        )
 
-        # Показываем все рамки одновременно
+        check_highlight = make_code_highlight(
+            final_inst_code,
+            total_lines=TOTAL_LINES_FINAL,
+            first=10,
+            last=12,
+            width_scale=0.93,
+            height_scale=1.05,
+            corner_radius=0.04,
+            stroke_width=3,
+            stroke_color=C_CHECK,
+            fill_opacity=0.25,
+            fill_color=C_CHECK,
+            x_pad_align=0.20,
+            top_pad_lines=0.8,
+        )
+
+        sink_highlight = make_code_highlight(
+            final_inst_code,
+            total_lines=TOTAL_LINES_FINAL,
+            first=14,
+            last=14,
+            width_scale=0.93,
+            height_scale=1.05,
+            corner_radius=0.04,
+            stroke_width=3,
+            stroke_color=C_SINK,
+            fill_opacity=0.25,
+            fill_color=C_SINK,
+            x_pad_align=0.20,
+            top_pad_lines=0.8,
+        )
+        # =========================================================================
+
         self.play(
             Create(source_highlight),
             Create(prop_highlight),
@@ -395,47 +526,38 @@ class TaintCompilationFixed(Scene):
         )
         self.wait(0.5)
 
-        # SOURCE: dfsan_set_label (строки 3-5) - СЛЕВА
         init_desc = VGroup(
             Text("dfsan_set_label()", font_size=17, color=C_SOURCE, weight=BOLD),
-            Text("SOURCE: помечает байты user_input как tainted", font_size=13, color=WHITE),
+            Text("SOURCE: помечает байты\nuser_input как tainted", font_size=13, color=WHITE),
         ).arrange(DOWN, buff=0.12)
         init_desc.next_to(source_highlight, LEFT, buff=0.5)
-
         self.play(FadeIn(init_desc, shift=RIGHT * 0.15))
         self.wait(1.4)
 
-        # PROPAGATION: sprintf (строки 6-7) - СПРАВА
         prop_desc = VGroup(
             Text("sprintf()", font_size=17, color=C_PROP, weight=BOLD),
-            Text("PROPAGATION: метка может перейти в cmd", font_size=13, color=WHITE),
+            Text("PROPAGATION: метка может\nперейти в cmd", font_size=13, color=WHITE),
         ).arrange(DOWN, buff=0.12)
         prop_desc.next_to(prop_highlight, RIGHT, buff=0.5)
-
         self.play(FadeIn(prop_desc, shift=LEFT * 0.15))
         self.wait(1.4)
 
-        # CHECK: dfsan_read_label (строки 9-11) - СЛЕВА
         check_desc = VGroup(
             Text("dfsan_read_label()", font_size=17, color=C_CHECK, weight=BOLD),
-            Text("CHECK: проверка метки cmd перед system()", font_size=13, color=WHITE),
+            Text("CHECK: проверка метки cmd\nперед system()", font_size=13, color=WHITE),
         ).arrange(DOWN, buff=0.12)
         check_desc.next_to(check_highlight, LEFT, buff=0.5)
-
         self.play(FadeIn(check_desc, shift=RIGHT * 0.15))
         self.wait(1.4)
 
-        # SINK: system (строка 13) - СПРАВА
         sink_desc = VGroup(
             Text("system()", font_size=17, color=C_SINK, weight=BOLD),
-            Text("SINK: использование данных в опасном вызове", font_size=13, color=WHITE),
+            Text("SINK: использование данных\nв опасном вызове", font_size=13, color=WHITE),
         ).arrange(DOWN, buff=0.12)
         sink_desc.next_to(sink_highlight, RIGHT, buff=0.5)
-
         self.play(FadeIn(sink_desc, shift=LEFT * 0.15))
         self.wait(1.2)
 
-        # Убираем все рамки И лейблы в конце одновременно
         self.play(
             FadeOut(source_highlight),
             FadeOut(prop_highlight),
@@ -451,4 +573,3 @@ class TaintCompilationFixed(Scene):
         self.play(FadeOut(legend), run_time=0.35)
         self.play(FadeOut(final_inst_label), run_time=0.2)
         self.play(*[FadeOut(m) for m in self.mobjects])
-
