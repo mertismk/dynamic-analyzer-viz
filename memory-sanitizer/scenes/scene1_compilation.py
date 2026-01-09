@@ -96,7 +96,6 @@ class CompilationScene(Scene):
 
         inst_code_str = """int main() {
     int* arr = new int[5];
-    __msan_allocated_memory(arr, 20);
 
     arr[0] = 10;
     __msan_unpoison(&arr[0], 4);

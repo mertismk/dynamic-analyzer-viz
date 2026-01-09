@@ -12,7 +12,6 @@ class PoisonInitScene(Scene):
     def construct(self):
         inst_code_str = """int main() {
     int* arr = new int[5];
-    __msan_allocated_memory(arr, 20);
 
     arr[0] = 10;
     __msan_unpoison(&arr[0], 4);
@@ -53,7 +52,7 @@ class PoisonInitScene(Scene):
         inst_label.next_to(inst_code, UP, buff=0.15)
 
         inst_grp = VGroup(inst_code, inst_label)
-        inst_grp.scale(0.62).move_to(LEFT * 3.5 + DOWN * 0.3)
+        inst_grp.scale(0.638).move_to(LEFT * 3.5 + DOWN * 0.3)
 
         self.add(inst_grp)
 
@@ -171,7 +170,7 @@ class PoisonInitScene(Scene):
             idx.next_to(heap_cells[i], UP, buff=0.06)
             heap_indices.add(idx)
 
-        line_height = inst_code.height / 23
+        line_height = inst_code.height / 22
 
         phase2 = Text(
             "Этап 1: Выделение памяти",
@@ -185,7 +184,7 @@ class PoisonInitScene(Scene):
         highlight2 = RoundedRectangle(
             corner_radius=0.05,
             width=inst_code.width * 0.88,
-            height=line_height * 2.1,
+            height=line_height * 1.4,
             color=RED,
             fill_color=RED,
             fill_opacity=0.25,
@@ -193,7 +192,7 @@ class PoisonInitScene(Scene):
         )
         highlight2.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
         highlight2.move_to(
-            inst_code.get_top() + DOWN * (line_height * 2.05), aligned_edge=UP
+            inst_code.get_top() + DOWN * (line_height * 1.45), aligned_edge=UP
         )
 
         self.play(Write(phase2), FadeIn(highlight2), run_time=0.8)
@@ -233,7 +232,7 @@ class PoisonInitScene(Scene):
         highlight3 = RoundedRectangle(
             corner_radius=0.05,
             width=inst_code.width * 0.88,
-            height=line_height * 8.7,
+            height=line_height * 8.4,
             color=GREEN,
             fill_color=GREEN,
             fill_opacity=0.25,
@@ -241,7 +240,7 @@ class PoisonInitScene(Scene):
         )
         highlight3.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
         highlight3.move_to(
-            inst_code.get_top() + DOWN * (line_height * 4.55), aligned_edge=UP
+            inst_code.get_top() + DOWN * (line_height * 3.85), aligned_edge=UP
         )
 
         self.play(Write(phase3), FadeIn(highlight3), run_time=0.8)

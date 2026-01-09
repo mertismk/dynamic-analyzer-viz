@@ -12,7 +12,6 @@ class MSanInitScene(Scene):
     def construct(self):
         inst_code_str = """int main() {
     int* arr = new int[5];
-    __msan_allocated_memory(arr, 20);
 
     arr[0] = 10;
     __msan_unpoison(&arr[0], 4);
@@ -53,7 +52,7 @@ class MSanInitScene(Scene):
         inst_label.next_to(inst_code, UP, buff=0.15)
 
         inst_grp = VGroup(inst_code, inst_label)
-        inst_grp.scale(0.62).move_to(LEFT * 3.5 + DOWN * 0.3)
+        inst_grp.scale(0.638).move_to(LEFT * 3.5 + DOWN * 0.3)
 
         self.add(inst_grp)
 
@@ -194,19 +193,8 @@ class MSanInitScene(Scene):
         )
         mapping_label.next_to(shadow, DOWN, buff=0.25)
 
-        # Финальное пояснение - размещаем слева от контейнера
-        explanation = VGroup(
-            Text(
-                "Хранит статус:", font_size=15, color=WHITE, font="Inter", weight=BOLD
-            ),
-            Text("0 = инициализирован ✓", font_size=14, color=GREEN, font="Inter"),
-            Text("1 = не инициализирован ✗", font_size=14, color=RED, font="Inter"),
-        ).arrange(DOWN, aligned_edge=LEFT, buff=0.12)
-        explanation.next_to(vm_container, LEFT, buff=0.6).shift(DOWN * 1.5)
-
         self.play(
             FadeIn(mapping_label, shift=UP * 0.2),
-            FadeIn(explanation, shift=RIGHT * 0.2, lag_ratio=0.15),
             run_time=1.2,
         )
         self.wait(2.5)
@@ -223,7 +211,6 @@ class MSanInitScene(Scene):
             FadeOut(arrow_msan),
             FadeOut(msan_label),
             FadeOut(mapping_label),
-            FadeOut(explanation),
             FadeOut(phase1),
             run_time=0.8,
         )

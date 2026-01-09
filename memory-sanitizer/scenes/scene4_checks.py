@@ -12,7 +12,6 @@ class ChecksScene(Scene):
     def construct(self):
         inst_code_str = """int main() {
     int* arr = new int[5];
-    __msan_allocated_memory(arr, 20);
 
     arr[0] = 10;
     __msan_unpoison(&arr[0], 4);
@@ -53,7 +52,7 @@ class ChecksScene(Scene):
         inst_label.next_to(inst_code, UP, buff=0.15)
 
         inst_grp = VGroup(inst_code, inst_label)
-        inst_grp.scale(0.62).move_to(LEFT * 3.5 + DOWN * 0.3)
+        inst_grp.scale(0.638).move_to(LEFT * 3.5 + DOWN * 0.3)
         self.add(inst_grp)
 
         title = Text(
@@ -209,7 +208,7 @@ class ChecksScene(Scene):
         for h, s in zip(heap_vals, shadow_vals):
             self.add(h, s)
 
-        line_height = inst_code.height / 23
+        line_height = inst_code.height / 22
 
         phase4 = Text(
             "Этап 3: Проверка arr[0] - успех",
@@ -231,7 +230,7 @@ class ChecksScene(Scene):
         )
         highlight4.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
         highlight4.move_to(
-            inst_code.get_top() + DOWN * (line_height * 14.05), aligned_edge=UP
+            inst_code.get_top() + DOWN * (line_height * 13.05), aligned_edge=UP
         )
 
         self.play(Write(phase4), FadeIn(highlight4), run_time=0.8)
@@ -284,7 +283,7 @@ class ChecksScene(Scene):
         highlight5 = RoundedRectangle(
             corner_radius=0.05,
             width=inst_code.width * 1,
-            height=line_height * 3.1,
+            height=line_height * 2.5,
             color=RED,
             fill_color=ORANGE,
             fill_opacity=0.25,
@@ -292,7 +291,7 @@ class ChecksScene(Scene):
         )
         highlight5.align_to(inst_code, LEFT).shift(RIGHT * 0.12)
         highlight5.move_to(
-            inst_code.get_top() + DOWN * (line_height * 16.55), aligned_edge=UP
+            inst_code.get_top() + DOWN * (line_height * 16.15), aligned_edge=UP
         )
 
         self.play(Write(phase5), FadeIn(highlight5), run_time=0.8)
